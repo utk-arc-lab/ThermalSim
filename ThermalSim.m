@@ -30,7 +30,7 @@ classdef ThermalSim
 			pde_mesh_nodes = ThermalSim.BuildSingleWallPDEMeshNodes(p);
 			pde_mesh = ThermalSim.BuildSingleWallPDEMeshFromNodes(thermal_model,pde_mesh_nodes);
 
-			[base_elements,wall_elements] = ThermalSim.GetSortedBuildElements(p,thermal_model);
+			% [base_elements,wall_elements] = ThermalSim.GetSortedBuildElements(p,thermal_model);
 
 			ThermalSim.SetAllButFirstInitialFaceTemperature(p,thermal_model);
 			ThermalSim.SetFaceThermalConductivities(p,thermal_model,@NodeActivationFunction);
@@ -48,21 +48,22 @@ classdef ThermalSim
 
 		function pde_mesh_nodes = BuildSingleWallPDEMeshNodes(thermal_sim_properties)
 			p = thermal_sim_properties; % shorthand
+			t = p.thermal_path; % shorthand
 
 			fprintf('Building PDE Mesh Nodes... ');
 			tic;
-			Base = [3 4 p.base_origin(1) p.base_length p.base_length p.base_origin(1) p.base_origin(2) p.base_origin(2) p.base_thick p.base_thick]';
+			Base = [3 4 t.base_origin(1) t.base_length t.base_length t.base_origin(1) t.base_origin(2) t.base_origin(2) t.base_thick t.base_thick]';
 
 			%Preallocate Array Size for Layers
-			layers = zeros(10, p.num_layer.*p.nodeperlayer);
+			layers = zeros(10, t.n_layers.*t.nodes_per_layer);
 			n = 1;
 
 			%Index Array Size Based on Node Numbers
-			for i = 1:p.num_layer
-			    bot_layerheight = ((i-1)*(p.node_thick))+p.wall_origin(2);
-			    x_offset = p.wall_origin(1);
+			for i = 1:t.n_layers
+			    bot_layerheight = ((i-1)*(p.node_thick))+t.wall_origin(2);
+			    x_offset = t.wall_origin(1);
 			    
-			    for j = 0:p.nodeperlayer-1
+			    for j = 0:t.nodes_per_layer-1
 			        layers(:,n) = [  3
 			                                4
 			                                x_offset+(j.*p.node_length)
@@ -94,11 +95,12 @@ classdef ThermalSim
 
 		function [base_elements,wall_elements] = GetSortedBuildElements(thermal_sim_properties,thermal_model)
 			p = thermal_sim_properties; % shorthand
+			t = p.thermal_path; % shorthand
 
-			base_x_range = [0,p.base_length] + p.base_origin(1);
-			base_y_range = [0,p.base_thick] + p.base_origin(2);
-			wall_x_range = [0,(p.nodeperlayer * p.node_length)] + p.wall_origin(1);
-			wall_y_range = [0,(p.num_layer * p.node_thick)] + p.wall_origin(2);
+			base_x_range = [0,t.base_length] + t.base_origin(1);
+			base_y_range = [0,t.base_thick] + t.base_origin(2);
+			wall_x_range = [0,(t.nodes_per_layer * p.node_length)] + t.wall_origin(1);
+			wall_y_range = [0,(t.n_layers * p.node_thick)] + t.wall_origin(2);
 
 			% Query
 			base_elements = ThermalSim.GetSortedMeshElementsInRange(thermal_model,base_x_range,base_y_range);
@@ -139,7 +141,7 @@ classdef ThermalSim
 
 		function SetAllButFirstInitialFaceTemperature(thermal_sim_properties,thermal_model)
 			p = thermal_sim_properties; % shorthand
-			n_faces = thermal_model.Geometry.NumFaces;
+			n_faces = thermal_model.Geometry.NumFaces; % shorthand
 
 			fprintf('Setting all wall faces to melt temperature... ');
 			tic;
@@ -152,21 +154,22 @@ classdef ThermalSim
 
 		function kActivateTime = CalculateNodeActivationTimes(thermal_sim_properties)
 			p = thermal_sim_properties; % shorthand
+			t = p.thermal_path; % shorthand
 
 			fprintf('Calculating Node Activation Times... ');
 			tic;
 			% Parameter Calculation
-			kActivateTime = zeros(1, p.num_layer.*p.nodeperlayer);
+			kActivateTime = zeros(1, t.n_layers.*t.nodes_per_layer);
 			% Skip Face 1 because it is baseplate and initial condition of room temp...
 			n = 2; 
 			%initialize time for 1 second to give a 0 starting condition
 			time = 1;
 
-			for i = 0:p.num_layer-1
-			    t_offset = p.layerwait;
+			for i = 0:t.n_layers-1
+			    t_offset = t.layer_wait;
 			    
-			    for j = 1:p.nodeperlayer
-			        timepernode = (p.node_length./p.travel_speed);
+			    for j = 1:t.nodes_per_layer
+			        timepernode = (p.node_length./t.travel_speed);
 			        if j == 1
 			            time = t_offset+time;
 			        else
@@ -176,7 +179,7 @@ classdef ThermalSim
 			        n = n+1;
 			    end
 			end
-			kActivateTime(2:end) = kActivateTime(2:end) - p.layerwait;
+			kActivateTime(2:end) = kActivateTime(2:end) - t.layer_wait;
 
 			fprintf('%1.3fs\n',toc);
 		end%func CalculateNodeActivationTimes

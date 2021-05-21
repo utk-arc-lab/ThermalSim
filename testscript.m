@@ -1,8 +1,11 @@
 clc, close all, clear all
 
 % Set up custom properties
-p = ThermalSimProperties; % default
-p.num_layer = 3;
+t = ThermalPath;
+t.n_layers = 3;
+t.BuildPath();
+
+p = ThermalSimProperties(t); % default
 
 thermalmodel = ThermalSim.ConfigureSingleWallSim(p);
 % [R,tlist] = ThermalSim.SolveSingleWallSim(thermalmodel,240,30);

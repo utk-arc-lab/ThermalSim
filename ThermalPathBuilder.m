@@ -1,6 +1,8 @@
 classdef ThermalPathBuilder
 	methods(Static)
-		function thermal_path = BuildWall(path_specificatio)
+		function thermal_path = BuildWall()
+			thermal_path = ThermalPath();
+
 
 		end%func BuildWall
 	end%static methods

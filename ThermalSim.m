@@ -19,21 +19,26 @@ classdef ThermalSim
 				return;
 			end%if
 
-			p = thermal_sim_properties; % shorthand
+			props = thermal_sim_properties; % shorthand
 
 			% Setup
 			global kActivateTime;
-			kActivateTime = ThermalSim.CalculateNodeActivationTimes(p);
+			kActivateTime = ThermalSim.CalculateNodeActivationTimes(props);
 
 			% Configure Thermal Model
 			thermal_model = ThermalSim.InitializeTransientThermalModel();
-			pde_mesh_nodes = ThermalSim.BuildSingleWallPDEMeshNodes(p);
+			% pde_mesh_nodes = ThermalSim.BuildSingleWallPDEMeshNodes(props);
+			pde_mesh_nodes = ThermalSim.BuildSingleWallPDEMeshNodesFromPath(props.thermal_path);
 			pde_mesh = ThermalSim.BuildSingleWallPDEMeshFromNodes(thermal_model,pde_mesh_nodes);
 
-			% [base_elements,wall_elements] = ThermalSim.GetSortedBuildElements(p,thermal_model);
+			[base_elements,wall_elements] = ThermalSim.GetSortedBuildElements(props,thermal_model);
 
-			ThermalSim.SetAllButFirstInitialFaceTemperature(p,thermal_model);
-			ThermalSim.SetFaceThermalConductivities(p,thermal_model,@NodeActivationFunction);
+			% Set
+			thermal_sim_properties.base_elements = base_elements;
+			thermal_sim_properties.wall_elements = wall_elements;
+
+			ThermalSim.SetAllButFirstInitialFaceTemperature(props,thermal_model);
+			ThermalSim.SetFaceThermalConductivities(props,thermal_model,@NodeActivationFunction);
 
 		end%func SingleWallSim
 	end% Public Static Methods
@@ -46,9 +51,49 @@ classdef ThermalSim
 			fprintf('%1.3fs\n',toc);
 		end%func InitializeTransientThermalModel
 
+		function  pde_mesh_nodes = BuildSingleWallPDEMeshNodesFromPath(thermal_path)
+			if(~isa(thermal_path,'ThermalPath'))
+				fprintf('ThermalSim::BuildSingleWallPDEMeshNodesFromPath: Input not a ThermalPath\n');
+				pde_mesh_nodes = [];
+				return;
+			end%if
+
+			if(isempty(thermal_path.x) || isempty(thermal_path.y))
+				fprintf('ThermalSim::BuildSingleWallPDEMeshNodesFromPath: ThermalPath not built!\n');
+				pde_mesh_nodes = [];
+				return;
+			end%if
+			
+			node_length = thermal_path.wall_length / (thermal_path.nodes_per_layer - 1);
+			node_height = thermal_path.bead_height;
+
+			layers = zeros(10,length(thermal_path.x));
+
+			for i = 1:length(thermal_path.x)
+				x_i = thermal_path.x(i) + thermal_path.base_origin(1) + thermal_path.wall_origin(1);
+				y_i = thermal_path.y(i) + thermal_path.base_origin(2) + thermal_path.wall_origin(2);
+
+				x = [x_i - node_length / 2; x_i + node_length / 2; x_i + node_length / 2; x_i - node_length / 2];
+				y = [y_i; y_i; y_i + node_height; y_i + node_height];
+
+				layers(:,i) = ThermalSim.DecsgRectangle(x,y);
+			end%for i
+
+			base_x = [thermal_path.base_origin(1); thermal_path.base_origin(1) + thermal_path.base_length; ...
+			 thermal_path.base_origin(1) + thermal_path.base_length; thermal_path.base_origin(1)];
+
+			base_y = [thermal_path.base_origin(2); thermal_path.base_origin(2); ...
+			 thermal_path.base_origin(2) + thermal_path.base_thick; thermal_path.base_origin(2) + thermal_path.base_thick;];
+
+			base = ThermalSim.DecsgRectangle(base_x,base_y);
+
+			pde_mesh_nodes = [base layers];
+
+		end%func BuildSingleWallPDEMeshNodesFromPath
+
 		function pde_mesh_nodes = BuildSingleWallPDEMeshNodes(thermal_sim_properties)
-			p = thermal_sim_properties; % shorthand
-			t = p.thermal_path; % shorthand
+			props = thermal_sim_properties; % shorthand
+			t = props.thermal_path; % shorthand
 
 			fprintf('Building PDE Mesh Nodes... ');
 			tic;
@@ -60,20 +105,20 @@ classdef ThermalSim
 
 			%Index Array Size Based on Node Numbers
 			for i = 1:t.n_layers
-			    bot_layerheight = ((i-1)*(p.node_thick))+t.wall_origin(2);
+			    bot_layerheight = ((i-1)*(props.node_thick))+t.wall_origin(2);
 			    x_offset = t.wall_origin(1);
 			    
 			    for j = 0:t.nodes_per_layer-1
 			        layers(:,n) = [  3
 			                                4
-			                                x_offset+(j.*p.node_length)
-			                                x_offset+((1+j).*p.node_length)
-			                                x_offset+((1+j).*p.node_length)
-			                                x_offset+(j.*p.node_length)
+			                                x_offset+(j.*props.node_length)
+			                                x_offset+((1+j).*props.node_length)
+			                                x_offset+((1+j).*props.node_length)
+			                                x_offset+(j.*props.node_length)
 			                                bot_layerheight
 			                                bot_layerheight
-			                                bot_layerheight+p.node_thick
-			                                bot_layerheight+p.node_thick];
+			                                bot_layerheight+props.node_thick
+			                                bot_layerheight+props.node_thick];
 			        
 			        n = n+1;
 			    end%for j
@@ -94,73 +139,59 @@ classdef ThermalSim
 		end%func BuildSingleWallPDEMeshFromNodes
 
 		function [base_elements,wall_elements] = GetSortedBuildElements(thermal_sim_properties,thermal_model)
-			p = thermal_sim_properties; % shorthand
-			t = p.thermal_path; % shorthand
+			props = thermal_sim_properties; % shorthand
+			t = props.thermal_path; % shorthand
 
 			base_x_range = [0,t.base_length] + t.base_origin(1);
 			base_y_range = [0,t.base_thick] + t.base_origin(2);
-			wall_x_range = [0,(t.nodes_per_layer * p.node_length)] + t.wall_origin(1);
-			wall_y_range = [0,(t.n_layers * p.node_thick)] + t.wall_origin(2);
+			wall_x_range = [0,(t.nodes_per_layer * props.node_length)] + t.wall_origin(1);
+			wall_y_range = [0,(t.n_layers * props.node_thick)] + t.wall_origin(2);
 
 			% Query
-			base_elements = ThermalSim.GetSortedMeshElementsInRange(thermal_model,base_x_range,base_y_range);
-			wall_elements = ThermalSim.GetSortedMeshElementsInRange(thermal_model,wall_x_range,wall_y_range);
+			base_elements = thermal_model.Mesh.findElements('box',base_x_range,base_y_range);
+			wall_elements = ThermalSim.GetWallMeshElements(thermal_model,t);
+			% wall_elements = ThermalSim.GetSortedMeshElementsInRange(thermal_model,wall_x_range,wall_y_range);
 		end%func GetSortedBuildElements
 
-		function sorted_elements = GetSortedMeshElementsInRange(thermal_model,x_range,y_range)
-			% Extract
-			mesh = thermal_model.Mesh;
-			nodes = mesh.Nodes;
-			elements = mesh.Elements;
+		function wall_elements = GetWallMeshElements(thermal_model,thermal_path)
+			node_length = thermal_path.wall_length / (thermal_path.nodes_per_layer - 1);
+			node_height = thermal_path.bead_height;
 
-			% Subset
-			element_subset = mesh.findElements('box',x_range,y_range);
-			
-			% Preallocate
-			[~,n_elements] = size(element_subset);
-			element_centroids = zeros(2,n_elements);
+			wall_elements = cell(1);
 
-			% Calculate Centroids
-			for i = 1:n_elements
-				element_nodes = elements(:,element_subset(i));
+			for i = 1:length(thermal_path.x)
+				x_i = thermal_path.x(i) + thermal_path.base_origin(1) + thermal_path.wall_origin(1);
+				y_i = thermal_path.y(i) + thermal_path.base_origin(2) + thermal_path.wall_origin(2);
 
-				nodes_x = nodes(1,element_nodes);
-				nodes_y = nodes(2,element_nodes);
+				x = [x_i - node_length / 2, x_i + node_length / 2];
+				y = [y_i, y_i + node_height];
 
-				nodes_avg_x = (max(nodes_x) + min(nodes_x)) / 2;
-				nodes_avg_y = (max(nodes_y) + min(nodes_y)) / 2;
-				element_centroids(:,i) = [nodes_avg_x;nodes_avg_y];
+				wall_elements{i} = thermal_model.Mesh.findElements('box',x,y);
 			end%for i
-
-			[~,x_sort_indices] = sort(element_centroids(1,:));
-			[~,y_sort_indices] = sort(element_centroids(2,:));
-
-
-
 		end%func GetSortedMeshElements
 
 		function SetAllButFirstInitialFaceTemperature(thermal_sim_properties,thermal_model)
-			p = thermal_sim_properties; % shorthand
+			props = thermal_sim_properties; % shorthand
 			n_faces = thermal_model.Geometry.NumFaces; % shorthand
 
 			fprintf('Setting all wall faces to melt temperature... ');
 			tic;
 			% Pre allocate all Faces other than the baseplate to melting temperature
 			for i = 2:n_faces
-			    thermalIC(thermal_model,p.melt_temp,'Face',i);
+			    thermalIC(thermal_model,props.melt_temp,'Face',i);
 			end
 			fprintf('%1.3fs\n',toc);
 		end%func SetAllButFirstInitialFaceTemperature
 
 		function kActivateTime = CalculateNodeActivationTimes(thermal_sim_properties)
-			p = thermal_sim_properties; % shorthand
-			t = p.thermal_path; % shorthand
+			props = thermal_sim_properties; % shorthand
+			t = props.thermal_path; % shorthand
 
 			fprintf('Calculating Node Activation Times... ');
 			tic;
 			% Parameter Calculation
 			kActivateTime = zeros(1, t.n_layers.*t.nodes_per_layer);
-			% Skip Face 1 because it is baseplate and initial condition of room temp...
+			% Skip Face 1 because it is baseplate and initial condition of room temprops...
 			n = 2; 
 			%initialize time for 1 second to give a 0 starting condition
 			time = 1;
@@ -169,7 +200,7 @@ classdef ThermalSim
 			    t_offset = t.layer_wait;
 			    
 			    for j = 1:t.nodes_per_layer
-			        timepernode = (p.node_length./t.travel_speed);
+			        timepernode = (props.node_length./t.travel_speed);
 			        if j == 1
 			            time = t_offset+time;
 			        else
@@ -185,24 +216,28 @@ classdef ThermalSim
 		end%func CalculateNodeActivationTimes
 
 		function SetFaceThermalConductivities(thermal_sim_properties,thermal_model,specific_heat_expression)
-			p = thermal_sim_properties; % shorthand
+			props = thermal_sim_properties; % shorthand
 			n_faces = thermal_model.Geometry.NumFaces;
 
 			fprintf('Setting Node Properties... ');
 			tic;
 
-			thermalProperties(thermal_model,'ThermalConductivity', p.k,'MassDensity', p.density, ...
-			                                'SpecificHeat', p.Cp);
-			thermalIC(thermal_model,p.ambient_T,'Face',1);
+			thermalProperties(thermal_model,'ThermalConductivity', props.k,'MassDensity', props.density, ...
+			                                'SpecificHeat', props.Cp);
+			thermalIC(thermal_model,props.ambient_T,'Face',1);
 
 			for i = 2:n_faces
 			    thermalProperties(thermal_model,'Face',i,'ThermalConductivity',specific_heat_expression, ...
-			        'MassDensity', p.density, 'SpecificHeat', p.Cp);
+			        'MassDensity', props.density, 'SpecificHeat', props.Cp);
 			end%for i
 
 			fprintf('%1.3fs\n',toc);
 
 		end%func SetFaceThermalConductivities
+
+		function decsg_vector = DecsgRectangle(x,y)
+			decsg_vector = [3; 4; x(1); x(2); x(3); x(4); y(1); y(2); y(3); y(4)];
+		end%func DecsgRectangle
 	end% Private Static Methods
 
 end%class ThermalSim

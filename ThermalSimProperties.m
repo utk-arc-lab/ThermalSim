@@ -1,4 +1,4 @@
-classdef ThermalSimProperties
+classdef ThermalSimProperties < handle
 	properties % DEFAULT
 		% Arg in
 		thermal_path;
@@ -16,6 +16,10 @@ classdef ThermalSimProperties
 		node_length;
 		node_thick;
 		lump_mass;
+
+		% Later
+		base_elements = [];
+		wall_elements = [];
 		
 	end%properties
 

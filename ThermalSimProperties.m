@@ -20,6 +20,8 @@ classdef ThermalSimProperties < handle
 		% Later
 		base_elements = [];
 		wall_elements = [];
+		base_faces = [];
+		wall_faces = [];
 		
 	end%properties
 

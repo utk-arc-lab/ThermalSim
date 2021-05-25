@@ -24,6 +24,8 @@ classdef ThermalSim
 			% Setup
 			global kActivateTime;
 			kActivateTime = ThermalSim.CalculateNodeActivationTimes(props);
+			% length(kActivateTime)
+			% kActivateTime
 
 			% Configure Thermal Model
 			thermal_model = ThermalSim.InitializeTransientThermalModel();
@@ -34,11 +36,25 @@ classdef ThermalSim
 			[base_elements,wall_elements] = ThermalSim.GetSortedBuildElements(props,thermal_model);
 
 			% Set
-			thermal_sim_properties.base_elements = base_elements;
-			thermal_sim_properties.wall_elements = wall_elements;
+			props.base_elements = base_elements;
+			props.wall_elements = wall_elements;
 
-			ThermalSim.SetAllButFirstInitialFaceTemperature(props,thermal_model);
+			[base_faces,wall_faces] = ThermalSim.GetBaseAndWallFaces(props,thermal_model);
+
+			props.base_faces = base_faces;
+			props.wall_faces = wall_faces;
+
+			[~,new_kActivateIndices] = sort(wall_faces);
+			new_kActivateIndices = new_kActivateIndices + 1;
+			kActivateTime(2:end) = kActivateTime(new_kActivateIndices);
+
+			ThermalSim.SetInitialNodeTemperature(props,thermal_model,props.melt_temp,1:length(wall_faces));
 			ThermalSim.SetFaceThermalConductivities(props,thermal_model,@NodeActivationFunction);
+
+			% ThermalSim.ElementWiseSimSetup(thermal_sim_properties,thermal_model);
+
+			% ThermalSim.SetAllButFirstInitialFaceTemperature(props,thermal_model);
+			% ThermalSim.SetFaceThermalConductivities(props,thermal_model,@NodeActivationFunction);
 
 		end%func SingleWallSim
 	end% Public Static Methods
@@ -170,6 +186,41 @@ classdef ThermalSim
 			end%for i
 		end%func GetSortedMeshElements
 
+		function ElementWiseSimSetup(thermal_sim_properties,thermal_model)
+			props = thermal_sim_properties; % shorthand
+
+			ThermalSim.SetElementInitialTemperature(thermal_model,props.ambient_T,props.base_elements);
+			ThermalSim.SetElementInitialTemperature(thermal_model,props.melt_temp,wall_elements);
+
+			ThermalSim.SetElementThermalConductivities(thermal_sim_properties,thermal_model,props.k,base_elements);
+			ThermalSim.SetElementThermalConductivities(thermal_sim_properties,thermal_model, ...
+				@ActivationFunctions.NodeActivationFunction,wall_elements);
+		end%func ElementWiseSimSetup
+
+		function SetElementInitialTemperature(thermal_model,temperature,elements)
+			for i = 1:length(elements)
+				thermalIC(thermal_model,temperature,'Element',i);
+			end%for i
+		end%func SetElementInitialTemperature
+
+		function SetElementThermalConductivities(thermal_sim_properties,thermal_model,specific_heat_expression,elements)
+			props = thermal_sim_properties; % shorthand			
+
+			for i = 1:length(elements)
+				thermalProperties(thermal_model,'ThermalConductivity',specific_heat_expression, ...
+					'MassDensity', props.density, 'SpecificHeat', props.Cp)
+			end%for i
+		end%func SetElementThermalConductivities
+
+		function SetInitialNodeTemperature(thermal_sim_properties,thermal_model,temperature,node_indices)
+			props = thermal_sim_properties; % shorthand
+			faces = props.wall_faces;
+
+			for current_node = node_indices
+				thermalIC(thermal_model,temperature,'face',faces(current_node));
+			end%for node_indices
+		end%func SetInitialNodeTemperatures
+
 		function SetAllButFirstInitialFaceTemperature(thermal_sim_properties,thermal_model)
 			props = thermal_sim_properties; % shorthand
 			n_faces = thermal_model.Geometry.NumFaces; % shorthand
@@ -238,6 +289,70 @@ classdef ThermalSim
 		function decsg_vector = DecsgRectangle(x,y)
 			decsg_vector = [3; 4; x(1); x(2); x(3); x(4); y(1); y(2); y(3); y(4)];
 		end%func DecsgRectangle
+
 	end% Private Static Methods
+
+	methods(Static)
+		function [base_face,wall_faces] = GetBaseAndWallFaces(thermal_sim_properties,thermal_model)
+			props = thermal_sim_properties; % shorthand
+			geometry = thermal_model.Geometry;
+
+			wall_faces = [];
+			for i = 1:thermal_model.Geometry.NumFaces
+				[x_bounds,y_bounds] = ThermalSim.GetFaceBounds(thermal_model,i);
+				elements_in_face = thermal_model.Mesh.findElements('box',x_bounds,y_bounds);
+				elements_in_face = sort(elements_in_face);
+
+				bool_node_found = false;
+				for j = 1:length(props.wall_elements)
+					current_elements = sort(props.wall_elements{j});
+
+					if(size(current_elements) == size(elements_in_face))
+
+						if(current_elements == elements_in_face)
+							bool_node_found = true;
+							wall_faces(j) = i;
+							break;
+						end%if
+
+					end%if
+				end%for j
+				
+				if(~bool_node_found)
+					base_face = i;
+				end%if
+			end%for i
+		end%func GetBaseAndWallFaces
+
+		function [x_bounds,y_bounds] = GetElementBounds(thermal_model,elements)
+			x = [];
+			y = x;
+
+			for current_element = elements
+				node_set = thermal_model.Mesh.Elements(:,current_element)';
+				
+				for i = 1:length(node_set)
+					current_node = node_set(i);
+					x = [x thermal_model.Mesh.Nodes(1,current_node)];
+					y = [y thermal_model.Mesh.Nodes(2,current_node)];
+				end%for i
+
+				x_bounds = [min(x),max(x)];
+				y_bounds = [min(y),max(y)];
+			end%for elements
+		end%func GetElementBounds
+
+		function [x_bounds,y_bounds] = GetFaceBounds(thermal_model,face_index)
+			geometry = thermal_model.Geometry.geom;
+
+			face_logical = geometry(7,:) == face_index;
+
+			x = geometry(2:3,face_logical);
+			y = geometry(4:5,face_logical);
+
+			x_bounds = [min(x(:)),max(x(:))];
+			y_bounds = [min(y(:)),max(y(:))];
+		end%func GetFaceBounds
+	end%static methods TEST
 
 end%class ThermalSim

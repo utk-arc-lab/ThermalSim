@@ -27,8 +27,8 @@ classdef ThermalSimProperties < handle
 
 	methods
 		function obj = ThermalSimProperties(thermal_path)
-			if(isempty(thermal_path.x))
-				fprintf('ThermalSimProperties::ThermalSimProperties: Thermal Path not built! Use ThermalPath.Build(); first!\n');
+			if(isempty(thermal_path.contours))
+				fprintf('ThermalSimProperties::ThermalSimProperties: Thermal Path not built! Use ThermalPathBuilder first!\n');
 				return;
 			end%if
 			p = thermal_path; % shorthand

@@ -1,9 +1,5 @@
 classdef ThermalPath < handle
 	properties
-		% Arg in
-		layer_wait = 30; % seconds
-		travel_speed = 2.75; % mm/sec
-
 		% Set
 		% Bead Properties
 		bead_height = 2.25; %mm
@@ -20,29 +16,35 @@ classdef ThermalPath < handle
 		base_thick = 12.7; %mm
 		base_origin = [0,0];
 
+		% Wall Properties
+		wall_origin = [0,0];
+		
+		% Path
+		contours;
+
 		% Calculated
-		wall_origin;
-		x; % mm
-		y; % mm
+		node_length;
 
 	end%properties
 
 	methods
 		function obj = ThermalPath()
-			% BuildPath(obj)
+			fprintf('ThermalPath::ThermalPath: Empty Thermal Path Initialized.\n');
+			SetNodeLength(obj);
 		end%func Constructor
 
-		function BuildPath(obj)
-			obj.wall_origin = [(obj.base_length - obj.wall_length)./2,obj.base_thick];
+		function obj = set.wall_length(obj,wall_length)
+			obj.wall_length = wall_length;
+			SetNodeLength(obj);
+		end%func
 
-			x = [];
-			y = [];
-			for i = 1:obj.n_layers
-				x = [x, linspace(0,obj.wall_length,obj.nodes_per_layer)];
-				y = [y, ((i-1)*obj.bead_height).*ones(1,obj.nodes_per_layer)];
-			end%for i
-			obj.x = x;
-			obj.y = y;
-		end%func 
+		function obj = set.nodes_per_layer(obj,nodes_per_layer)
+			obj.nodes_per_layer = nodes_per_layer;
+			SetNodeLength(obj);
+		end%func
+
+		function obj = SetNodeLength(obj)
+			obj.node_length = obj.wall_length / (obj.nodes_per_layer - 1);
+		end%func
 	end%methods
 end%class ThermalPathSpecification

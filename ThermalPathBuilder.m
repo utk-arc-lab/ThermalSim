@@ -1,6 +1,6 @@
 classdef ThermalPathBuilder
 	properties(Constant)
-		default_travel_speed = 20.75; % mm/s
+		default_travel_speed = 2.75; % mm/s
 		default_layer_wait = 30; % s
 	end%const
 

@@ -21,48 +21,69 @@ classdef ThermalSim
 
 			props = thermal_sim_properties; % shorthand
 
-			% Setup
-			global kActivateTime;
-			kActivateTime = ThermalSim.CalculateNodeActivationTimes(props);
-
 			% Configure Thermal Model
 			thermal_model = ThermalSim.InitializeTransientThermalModel();
 			pde_mesh_nodes = ThermalSim.BuildSingleWallPDEMeshNodesFromPath(props.thermal_path);
-			pde_mesh = ThermalSim.BuildSingleWallPDEMeshFromNodes(thermal_model,pde_mesh_nodes);
+			ThermalSim.BuildSingleWallPDEMeshFromNodes(thermal_model,pde_mesh_nodes);
 
+			% Find elements for each region
 			[base_elements,wall_elements] = ThermalSim.GetSortedBuildElements(props,thermal_model);
 
-			% Set
+			% Save in properties
 			props.base_elements = base_elements;
 			props.wall_elements = wall_elements;
 
+			% Find faces for each region
 			[base_faces,wall_faces] = ThermalSim.GetBaseAndWallFaces(props,thermal_model);
 
+			% Save in properties
 			props.base_faces = base_faces;
 			props.wall_faces = wall_faces;
 
+			% Calculate parameter activation times
+			% Conduction, also the basis for the rest:
+			global kActivateTime;
+			kActivateTime = ThermalSim.CalculateNodeActivationTimes(props);
+
+			% Sort based on face order found in GetBaseAndWallFaces()
 			[~,new_kActivateIndices] = sort(wall_faces);
 			new_kActivateIndices = new_kActivateIndices;
 			kActivateTime = kActivateTime(new_kActivateIndices);
 
+			% Weld Start Time
+			weld_offset = props.weld_time_offset; % seconds
 			global kStartTime;
-			kStartTime = kActivateTime + 0.1;
+			kStartTime = kActivateTime + weld_offset;
 
+			% Weld End Time (based on travel speed)
 			global kEndTime;
 			kEndTime = ThermalSim.CalculateNodeEndTimes(props,kActivateTime);
+			kEndTime = kEndTime + weld_offset;
 
+			% Insert base face activation into array
 			base_activation_time = 0;
 			kActivateTime = [kActivateTime(1:base_faces - 1),base_activation_time,kActivateTime(base_faces:end)];
 			kEndTime = [kEndTime(1:base_faces - 1), base_activation_time, kEndTime(base_faces:end)];
 			kStartTime = [kStartTime(1:base_faces - 1), base_activation_time, kStartTime(base_faces:end)];
 
-			ThermalSim.SetInitialNodeTemperature(props,thermal_model,props.ambient_T,1:length(wall_faces));
-			% ThermalSim.SetFaceThermalConductivities(props,thermal_model,@ActivationFunctions.NodeActivationFunction);
-			ThermalSim.SetFaceThermalConductivities(props,thermal_model,props.k);
+			% Set Thermal Conductivities - two options, either enable or disable node activation
+			if(props.bool_activate_nodes_iteratively)
+				ThermalSim.SetFaceThermalConductivities(props,thermal_model,@ActivationFunctions.NodeActivationFunction);
+			else
+				ThermalSim.SetFaceThermalConductivities(props,thermal_model,props.k);
+			end%if
 
-			ThermalSim.SetFaceInternalHeatGeneration(props,thermal_model,@ActivationFunctions.InternalHeatingFunction);
+			% Set internal heat generation
+			if(props.bool_enable_internal_heat_generation)
+				ThermalSim.SetInitialNodeTemperature(thermal_model,props.ambient_T,[base_faces wall_faces]);
+				ThermalSim.SetFaceInternalHeatGeneration(props,thermal_model,@ActivationFunctions.InternalHeatingFunction);
+			else
+				ThermalSim.SetInitialNodeTemperature(thermal_model,props.melt_temp,wall_faces);
+				ThermalSim.SetInitialNodeTemperature(thermal_model,props.ambient_T,base_faces);
+			end%if
 
-			thermalBC(thermal_model,'Edge',1,'ConvectionCoefficient',5.75,'AmbientTemperature',props.ambient_T);
+			% Set boundary conditions
+			thermalBC(thermal_model,'Edge',1,'ConvectionCoefficient',props.baseplate_convection_coefficient,'AmbientTemperature',props.ambient_T);
 		end%func SingleWallSim
 	end% Public Static Methods
 
@@ -75,20 +96,25 @@ classdef ThermalSim
 		end%func InitializeTransientThermalModel
 
 		function  pde_mesh_nodes = BuildSingleWallPDEMeshNodesFromPath(thermal_path)
+			% This function builds the decsg description of the mesh geometry from the path info
 			node_length = thermal_path.node_length;
 			node_height = thermal_path.bead_height;
 
 			layers_decsg = zeros(10,1);
 			k = 0;
 
+			% Extract [x,y] info from ThermalPath
 			for i = 1:length(thermal_path.contours)
 				[x,y] = thermal_path.contours{i}.PathVectors();
 
 				for j = 1:length(x)
 					k = k + 1;
+
+					% Place points in global frame
 					x_i = x(j) + thermal_path.base_origin(1) + thermal_path.wall_origin(1);
 					y_i = y(j) + thermal_path.base_origin(2) + thermal_path.wall_origin(2);
 
+					% decsg for each node corner (4x1)
 					x_node = [x_i - node_length / 2; x_i + node_length / 2; x_i + node_length / 2; x_i - node_length / 2];
 					y_node = [y_i; y_i; y_i + node_height; y_i + node_height];
 
@@ -96,58 +122,23 @@ classdef ThermalSim
 				end%for j
 			end%for i
 
+			% Calculate base corners
 			base_x = [thermal_path.base_origin(1); thermal_path.base_origin(1) + thermal_path.base_length; ...
 			 thermal_path.base_origin(1) + thermal_path.base_length; thermal_path.base_origin(1)];
 
 			base_y = [thermal_path.base_origin(2); thermal_path.base_origin(2); ...
 			 thermal_path.base_origin(2) + thermal_path.base_thick; thermal_path.base_origin(2) + thermal_path.base_thick;];
 
+			% Base decsg
 			base_decsg = ThermalSim.DecsgRectangle(base_x,base_y);
 
+			% Concatenate base and layers into single decsg
 			pde_mesh_nodes = [base_decsg layers_decsg];
 
 		end%func BuildSingleWallPDEMeshNodesFromPath
 
-		function pde_mesh_nodes = BuildSingleWallPDEMeshNodes(thermal_sim_properties)
-			props = thermal_sim_properties; % shorthand
-			t = props.thermal_path; % shorthand
-
-			fprintf('Building PDE Mesh Nodes... ');
-			tic;
-			Base = [3 4 t.base_origin(1) t.base_length t.base_length t.base_origin(1) t.base_origin(2) t.base_origin(2) t.base_thick t.base_thick]';
-
-			%Preallocate Array Size for Layers
-			layers = zeros(10, t.n_layers.*t.nodes_per_layer);
-			n = 1;
-
-			%Index Array Size Based on Node Numbers
-			for i = 1:t.n_layers
-			    bot_layerheight = ((i-1)*(props.node_thick))+t.wall_origin(2);
-			    x_offset = t.wall_origin(1);
-			    
-			    for j = 0:t.nodes_per_layer-1
-			        layers(:,n) = [  3
-			                                4
-			                                x_offset+(j.*props.node_length)
-			                                x_offset+((1+j).*props.node_length)
-			                                x_offset+((1+j).*props.node_length)
-			                                x_offset+(j.*props.node_length)
-			                                bot_layerheight
-			                                bot_layerheight
-			                                bot_layerheight+props.node_thick
-			                                bot_layerheight+props.node_thick];
-			        
-			        n = n+1;
-			    end%for j
-
-			end%for i
-
-			pde_mesh_nodes = [Base layers];
-
-			fprintf('%1.3fs\n',toc);
-		end%func BuildSingleWallPDEMeshNodes
-
 		function pde_mesh = BuildSingleWallPDEMeshFromNodes(thermal_model,pde_mesh_nodes)
+			% This function meshes the decsg made in BuildSingleWallPDEMeshNodesFromPath();
 			fprintf('Generating PDE Mesh... ');
 			dl = decsg(pde_mesh_nodes);
 			pde_mesh = geometryFromEdges(thermal_model,dl);
@@ -156,13 +147,15 @@ classdef ThermalSim
 		end%func BuildSingleWallPDEMeshFromNodes
 
 		function [base_elements,wall_elements] = GetSortedBuildElements(thermal_sim_properties,thermal_model)
+			% This function returns the base elements and wall elements in the order of the path.
+			% Wall elements is a cell array, where each entry corresponds to a Waypoint (in order of build).
+
 			props = thermal_sim_properties; % shorthand
 			t = props.thermal_path; % shorthand
 
+			% Base bounding box
 			base_x_range = [0,t.base_length] + t.base_origin(1);
 			base_y_range = [0,t.base_thick] + t.base_origin(2);
-			wall_x_range = [0,(t.nodes_per_layer * props.node_length)] + t.wall_origin(1);
-			wall_y_range = [0,(t.n_layers * props.node_thick)] + t.wall_origin(2);
 
 			% Query
 			base_elements = thermal_model.Mesh.findElements('box',base_x_range,base_y_range);
@@ -170,6 +163,8 @@ classdef ThermalSim
 		end%func GetSortedBuildElements
 
 		function wall_elements = GetWallMeshElements(thermal_model,thermal_path)
+			% This functino finds all of the elements inside each waypoint "node"
+
 			node_length = thermal_path.node_length;
 			node_height = thermal_path.bead_height;
 
@@ -200,6 +195,7 @@ classdef ThermalSim
 		end%func SetElementInitialTemperature
 
 		function SetElementThermalConductivities(thermal_sim_properties,thermal_model,specific_heat_expression,elements)
+			% specific_heat_expression can be a value or an anonymous function
 			props = thermal_sim_properties; % shorthand			
 
 			for i = 1:length(elements)
@@ -208,16 +204,17 @@ classdef ThermalSim
 			end%for i
 		end%func SetElementThermalConductivities
 
-		function SetInitialNodeTemperature(thermal_sim_properties,thermal_model,temperature,node_indices)
-			props = thermal_sim_properties; % shorthand
-			faces = props.wall_faces;
-
+		function SetInitialNodeTemperature(thermal_model,temperature,node_indices)
 			for current_node = node_indices
-				thermalIC(thermal_model,temperature,'face',faces(current_node));
+				thermalIC(thermal_model,temperature,'face',current_node);
 			end%for node_indices
-		end%func SetInitialNodeTemperatures
+		end%func SetInitialNodeTemperature
 
 		function kActivateTime = CalculateNodeActivationTimes(thermal_sim_properties)
+			% This function calculates the activation time for each node.
+			% This function assumes that each Waypoint in a Contour is deposited consecutively with no waits.
+			% This function uses the layer wait time specified as wait_after_time in Contour.m
+
 			props = thermal_sim_properties; % shorthand
 			t = props.thermal_path; % shorthand
 
@@ -254,6 +251,9 @@ classdef ThermalSim
 		end%func CalculateNodeActivationTimes
 
 		function kEndTime = CalculateNodeEndTimes(thermal_sim_properties, kActivateTime)
+			% This function uses each waypoint travel speed to calculate the "on" time for each "node"
+			% and therefore, when the "node" turns off.
+
 			props = thermal_sim_properties; % shorthand
 			t = props.thermal_path;
 
@@ -314,6 +314,17 @@ classdef ThermalSim
 
 	methods(Static)
 		function [base_face,wall_faces] = GetBaseAndWallFaces(thermal_sim_properties,thermal_model)
+			if(isempty(thermal_sim_properties.wall_elements) || isempty(thermal_sim_properties.base_elements))
+				fprintf('ThermalSim::GetBaseAndWallFaces: Please calculate wall and base elements first!\n');
+				base_faces = [];
+				wall_faces = [];
+				return;
+			end%if
+
+			% This function uses previously calculated base and wall elements to calculate faces
+			% I guess you could re-calculate the elements here to be safe if you wanted...
+			% but I don't feel like implementing that right now
+
 			props = thermal_sim_properties; % shorthand
 			geometry = thermal_model.Geometry;
 
@@ -345,6 +356,8 @@ classdef ThermalSim
 		end%func GetBaseAndWallFaces
 
 		function [x_bounds,y_bounds] = GetElementBounds(thermal_model,elements)
+			% This function does what it says it does
+
 			x = [];
 			y = x;
 
@@ -363,9 +376,11 @@ classdef ThermalSim
 		end%func GetElementBounds
 
 		function [x_bounds,y_bounds] = GetFaceBounds(thermal_model,face_index)
+			% This function does what it says it does
+
 			geometry = thermal_model.Geometry.geom;
 
-			face_logical = geometry(7,:) == face_index;
+			face_logical = geometry(6,:) == face_index | geometry(7,:) == face_index;
 
 			x = geometry(2:3,face_logical);
 			y = geometry(4:5,face_logical);

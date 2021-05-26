@@ -6,7 +6,7 @@ classdef ThermalPlotter
 	methods(Static)
 		function PDEAnimate(thermal_model,results,time_vector,bool_render)
 			if(bool_render)
-				v = VideoWriter(sprintf('ThermalSim%is_Node',ceil(time_vector(end))),'MPEG-4');
+				v = VideoWriter(sprintf('ThermalSim%is',ceil(time_vector(end))),'MPEG-4');
 				v.FrameRate = 60;
 				open(v);
 			end%if

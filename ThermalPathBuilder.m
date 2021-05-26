@@ -1,10 +1,14 @@
 classdef ThermalPathBuilder
 	properties(Constant)
-		default_travel_speed = 2.75; % mm/s
+		default_travel_speed = 20.75; % mm/s
 		default_layer_wait = 30; % s
 	end%const
 
 	methods(Static)
+		function WEEEEE(thermal_path)
+
+		end%func
+
 		function BuildSolidWall(thermal_path)
 			thermal_path.contours = ThermalPathBuilder.GenerateSolidWallContours(thermal_path);
 		end%func BuildSolidWall
@@ -41,7 +45,7 @@ classdef ThermalPathBuilder
 				waypoints{i} = Waypoint(x(i),y(i),ThermalPathBuilder.default_travel_speed);
 			end%for i
 		end%func LinspaceWaypoints
-		
+
 		function contours = GenerateSolidWallContours(thermal_path)
 			layer_height = thermal_path.bead_height;
 			n_layers = thermal_path.n_layers;

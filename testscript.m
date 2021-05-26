@@ -3,15 +3,21 @@ clc, close all, clear all
 % Set up custom properties
 t = ThermalPath;
 t.n_layers = 2;
-t.BuildPath();
-t.x(21:end) = flip(t.x(21:end));
-% t.x = [t.x(1:25) t.x(35:end)];
-% t.y = [t.y(1:25) t.y(35:end)];
+t.wall_origin = [(t.base_length - t.wall_length)./2,t.base_thick];
+
+% ThermalPathBuilder.BuildSolidWall(t);
+ThermalPathBuilder.BuildCastle(t);
+t.contours{end}.waypoints = flip(t.contours{end}.waypoints);
 
 p = ThermalSimProperties(t); % default
 
 thermalmodel = ThermalSim.ConfigureSingleWallSim(p);
-% [R,tlist] = ThermalSim.SolveSingleWallSim(thermalmodel,120,30);
+[R,tlist] = ThermalSim.SolveSingleWallSim(thermalmodel,60,30);
+
+
+
+
+
 
 % pdeplot(thermalmodel,'ElementLabels','on');
 

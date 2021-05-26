@@ -9,6 +9,7 @@ classdef ThermalSimProperties < handle
 		Cp = 620; % mild steel 620 J/kg K (Specific Heat)
 		k = 49.6; % mild steel 1%C average vale W/m-K (Thermal Conductivity)
 		ambient_T = 293.15; %Kelvin (20Deg C)
+		Q_dot = 10e3;
 
 		% Calculated
 		base_mass;

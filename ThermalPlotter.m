@@ -37,8 +37,8 @@ classdef ThermalPlotter
 		function PDEPlot(thermal_model,results,time_vector,time_index)
 			temp = results.Temperature;
 			% t_max = max(temp(:));
-			t_max = 1100; % should be max base plate temperature
-			t_min = min(temp(:));
+			t_max = 3000; % should be max base plate temperature
+			t_min = 0;%min(temp(:));
 
 			pdeplot(thermal_model,'XYData',temp(:,time_index),'colormap',ThermalPlotter.plot_colormap);
 			

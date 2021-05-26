@@ -45,11 +45,24 @@ classdef ThermalSim
 			new_kActivateIndices = new_kActivateIndices;
 			kActivateTime = kActivateTime(new_kActivateIndices);
 
+			global kStartTime;
+			kStartTime = kActivateTime + 0.1;
+
+			global kEndTime;
+			kEndTime = ThermalSim.CalculateNodeEndTimes(props,kActivateTime);
+
 			base_activation_time = 0;
 			kActivateTime = [kActivateTime(1:base_faces - 1),base_activation_time,kActivateTime(base_faces:end)];
+			kEndTime = [kEndTime(1:base_faces - 1), base_activation_time, kEndTime(base_faces:end)];
+			kStartTime = [kStartTime(1:base_faces - 1), base_activation_time, kStartTime(base_faces:end)];
 
-			ThermalSim.SetInitialNodeTemperature(props,thermal_model,props.melt_temp,1:length(wall_faces));
-			ThermalSim.SetFaceThermalConductivities(props,thermal_model,@NodeActivationFunction);
+			ThermalSim.SetInitialNodeTemperature(props,thermal_model,props.ambient_T,1:length(wall_faces));
+			% ThermalSim.SetFaceThermalConductivities(props,thermal_model,@ActivationFunctions.NodeActivationFunction);
+			ThermalSim.SetFaceThermalConductivities(props,thermal_model,props.k);
+
+			ThermalSim.SetFaceInternalHeatGeneration(props,thermal_model,@ActivationFunctions.InternalHeatingFunction);
+
+			thermalBC(thermal_model,'Edge',1,'ConvectionCoefficient',5.75,'AmbientTemperature',props.ambient_T);
 		end%func SingleWallSim
 	end% Public Static Methods
 
@@ -62,18 +75,6 @@ classdef ThermalSim
 		end%func InitializeTransientThermalModel
 
 		function  pde_mesh_nodes = BuildSingleWallPDEMeshNodesFromPath(thermal_path)
-			% if(~isa(thermal_path,'ThermalPath'))
-			% 	fprintf('ThermalSim::BuildSingleWallPDEMeshNodesFromPath: Input not a ThermalPath\n');
-			% 	pde_mesh_nodes = [];
-			% 	return;
-			% end%if
-
-			% if(isempty(thermal_path.x) || isempty(thermal_path.y))
-			% 	fprintf('ThermalSim::BuildSingleWallPDEMeshNodesFromPath: ThermalPath not built!\n');
-			% 	pde_mesh_nodes = [];
-			% 	return;
-			% end%if
-			
 			node_length = thermal_path.node_length;
 			node_height = thermal_path.bead_height;
 
@@ -252,6 +253,23 @@ classdef ThermalSim
 			fprintf('%1.3fs\n',toc);
 		end%func CalculateNodeActivationTimes
 
+		function kEndTime = CalculateNodeEndTimes(thermal_sim_properties, kActivateTime)
+			props = thermal_sim_properties; % shorthand
+			t = props.thermal_path;
+
+			kEndTime = kActivateTime;
+			k = 0;
+
+			for i = 1:length(t.contours)
+				current_contour = t.contours{i};
+				
+				for j = 1:length(current_contour.waypoints)
+					k = k + 1;
+					kEndTime(k) = kEndTime(k) + (props.node_length / current_contour.waypoints{i}.travel_speed);
+				end%for j
+			end%for i
+		end%func CalculateNodeEndTimes
+
 		function SetFaceThermalConductivities(thermal_sim_properties,thermal_model,specific_heat_expression)
 			props = thermal_sim_properties; % shorthand
 			n_faces = thermal_model.Geometry.NumFaces;
@@ -259,30 +277,40 @@ classdef ThermalSim
 			fprintf('Setting Node Properties... ');
 			tic;
 
+			% Set all faces to the default properties
 			thermalProperties(thermal_model,'ThermalConductivity', props.k,'MassDensity', props.density, ...
 			                                'SpecificHeat', props.Cp);
 
+			% Set base face to ambient T
 			thermalIC(thermal_model,props.ambient_T,'Face',props.base_faces);
 
+			% Update wall face properties to include specific heat expression
 			for current_face = props.wall_faces
 			    thermalProperties(thermal_model,'Face',current_face,'ThermalConductivity',specific_heat_expression, ...
 			        'MassDensity', props.density, 'SpecificHeat', props.Cp);
 			end%for i
 
-			% for current_face = props.base_faces
-			%     thermalProperties(thermal_model,'Face',current_face,'ThermalConductivity',props.k, ...
-			%         'MassDensity', props.density, 'SpecificHeat', props.Cp);
-			% end%for i
-
 			fprintf('%1.3fs\n',toc);
 
 		end%func SetFaceThermalConductivities
+
+		function SetFaceInternalHeatGeneration(thermal_sim_properties,thermal_model,internal_heat_generation_expression)
+			props = thermal_sim_properties; % shorthand
+
+			for current_face = props.wall_faces
+				internalHeatSource(thermal_model,internal_heat_generation_expression,'Face',current_face);
+			end%for current face
+		end%func SetFaceInternalHeatGeneration
 
 		function decsg_vector = DecsgRectangle(x,y)
 			decsg_vector = [3; 4; x(1); x(2); x(3); x(4); y(1); y(2); y(3); y(4)];
 		end%func DecsgRectangle
 
 	end% Private Static Methods
+
+	% ======================= %
+	% TESTING FUNCTIONS BELOW %
+	% ======================= %
 
 	methods(Static)
 		function [base_face,wall_faces] = GetBaseAndWallFaces(thermal_sim_properties,thermal_model)

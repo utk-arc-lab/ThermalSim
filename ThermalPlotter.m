@@ -4,9 +4,14 @@ classdef ThermalPlotter
 	end%const
 
 	methods(Static)
-		function PDEAnimate(thermal_model,results,time_vector,bool_render)
+		function PDEAnimate(thermal_model,results,time_vector,bool_render,file_name)
 			if(bool_render)
-				v = VideoWriter(sprintf('ThermalSim%is',ceil(time_vector(end))),'MPEG-4');
+				if(nargin == 5)
+					video_filename = strcat('Renders\',file_name);
+				else
+					video_filename = sprintf('Renders\ThermalSim%is',ceil(time_vector(end)));
+				end%if
+				v = VideoWriter(video_filename,'MPEG-4');
 				v.FrameRate = 60;
 				open(v);
 			end%if
@@ -17,7 +22,7 @@ classdef ThermalPlotter
 			[n_triangles,n_time_steps] = size(results.Temperature);
 
 			for i = 1:n_time_steps
-				ThermalPlotter.PDEPlot(thermal_model,results,time_vector,i);
+				graphics_handle = ThermalPlotter.PDEPlot(thermal_model,results,time_vector,i);
 				% ThermalPlotter.CustomPDEPlot(thermal_model,results,time_vector,i);
 				
 				if(bool_render)
@@ -34,20 +39,20 @@ classdef ThermalPlotter
 
 		end%func PDEAnimate
 
-		function PDEPlot(thermal_model,results,time_vector,time_index)
+		function h = PDEPlot(thermal_model,results,time_vector,time_index)
 			temp = results.Temperature;
 			% t_max = max(temp(:));
-			t_max = 3000; % should be max base plate temperature
-			t_min = 0;%min(temp(:));
+			t_max = 2000; % should be max base plate temperature
+			t_min = 293;%min(temp(:));
 
-			pdeplot(thermal_model,'XYData',temp(:,time_index),'colormap',ThermalPlotter.plot_colormap);
+			h = pdeplot(thermal_model,'XYData',temp(:,time_index),'colormap',ThermalPlotter.plot_colormap);
 			
 			grid on;
 			colorbar;
 			caxis([t_min,t_max]);
 			xlabel('X (mm)');
 			ylabel('Y (mm)');
-			title(sprintf('Time: %1.3fs',time_vector(time_index)));
+			title(sprintf('Time: %1.2fs',time_vector(time_index)));
 			ylim([0,50]);
 			xlim([0,300]);
 		end%func

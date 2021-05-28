@@ -20,6 +20,8 @@ classdef ThermalSim
 			end%if
 
 			props = thermal_sim_properties; % shorthand
+			global Q_dot;
+			Q_dot = props.Q_dot;
 
 			% Configure Thermal Model
 			thermal_model = ThermalSim.InitializeTransientThermalModel();

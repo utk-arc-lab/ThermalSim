@@ -13,9 +13,10 @@ classdef ThermalSimProperties < handle
 		Cp = 620; % mild steel 620 J/kg K (Specific Heat)
 		k = 49.6; % mild steel 1%C average vale W/m-K (Thermal Conductivity)
 		ambient_T = 293.15; %Kelvin (20Deg C)
+		Q_dot = 1200;
 		
 		weld_time_offset = 0.1; % s
-		baseplate_convection_coefficient = 5.75;
+		baseplate_convection_coefficient = 5.75*10^-6;
 
 		% Calculated
 		base_mass;

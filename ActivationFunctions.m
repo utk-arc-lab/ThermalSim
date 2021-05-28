@@ -26,6 +26,7 @@ classdef ActivationFunctions
 		function internal_heat_generation = InternalHeatingFunction(location,state)
 			global kStartTime;
 			global kEndTime;
+			global Q_dot;
 
 		    if any(isnan(state.time))
 		        internal_heat_generation = nan(size(state.u));
@@ -42,7 +43,7 @@ classdef ActivationFunctions
 		        end_time = kEndTime(current_face);
 		        
 		        if(state.time > start_time && state.time < end_time)
-		            internal_heat = 33e3;
+		            internal_heat = Q_dot;
 		        else
 		            % thermal_conductivity = 0.00001;
 		            internal_heat = 0;

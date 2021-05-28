@@ -30,6 +30,9 @@ classdef ThermalSimProperties < handle
 		wall_elements = [];
 		base_faces = [];
 		wall_faces = [];
+		kActivateTime = [];
+		kStartTime = [];
+		kEndTime = [];
 		
 	end%properties
 

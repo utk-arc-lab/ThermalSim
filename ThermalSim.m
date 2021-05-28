@@ -62,6 +62,11 @@ classdef ThermalSim
 			kEndTime = ThermalSim.CalculateNodeEndTimes(props,kActivateTime);
 			kEndTime = kEndTime + weld_offset;
 
+			% Save in properties
+			props.kActivateTime	= kActivateTime;
+			props.kStartTime = kStartTime;
+			props.kEndTime = kEndTime;
+
 			% Insert base face activation into array
 			base_activation_time = 0;
 			kActivateTime = [kActivateTime(1:base_faces - 1),base_activation_time,kActivateTime(base_faces:end)];
